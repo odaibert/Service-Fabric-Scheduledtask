@@ -5,12 +5,10 @@ This is a scenario guide for developers seeking to migrate existing Windows Serv
 This code accompanies a scenario guide which provides more resources and a more comprehensive walkthrough of containerizing existing applications using Service Fabric.
 
 ## Features
-* Export a Scheduled Task from a Windows Server machine
-* Build Image container 
-* Push Docker container image on your Docker Hub 
+* Export a Scheduled Task
+* Build and Push the container image to Docker Hub
 * Create a Service Fabric cluster
-* Create the Service Fabric project
-* Deploy the application to the cluster
+* Deploying to a Service Fabric cluster
 
 By containerizing and deploying to Service Fabric your Windows Scheduled Task's, you can migrate at your own pace while taking advantage of the reliability provided by Service Fabric Cluster.
 
@@ -31,18 +29,16 @@ git clone https://github.com/Microsoft/repository.git
 
 ### Step 2: Export Scheduled Task
 
->You can use the CreateTask.bat to create a scheduled task on your local computer
+> You can use the CreateTask.bat to create a scheduled task on your local computer
 
 1. Go to ScheduledTask folder 
 1. Export scheduled task
 ```shell
 schtasks /Query /XML /TN TaskExample > Exp-TaskExample.xml
 ``` 
-> or just execute ExportTask.bat on the same folder
 
+Example:
 ```xml
-Exp-TaskExample.xml
-
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -79,12 +75,12 @@ Exp-TaskExample.xml
 
 ### Step 3: Build and Push the container image to Docker Hub
 
-  1. Build the container image
+1. Build the container image
 ```shell  
 docker build -t scheduledtask .
 ```
 
-  2. Login to Docker Hub: 
+2. Login to Docker Hub: 
 ```shell
 docker login
 
@@ -95,49 +91,44 @@ Password: Password
 
 Login Succeeded
 ```
-  3.  Push to your registry
+
+3.  Push to your registry
 ```shell
 docker push example/scheduledtask:1.0.0
 ```
+### Step 4: Create a Service Fabric Cluster
 
-### Step 3: Deploying to a Service Fabric cluster
+You've got an application ready to run, now you need a cluster to run it on. We'll use PowerShell to create one in Azure. The New-AzureRmServiceFabricCluster cmdlet will automatically provision everything you need to get started. Make sure to give it a unique ResourceGroupName, as that will be used as part of the DNS name for your cluster.
+```shell
+# First, we need to login to an Azure subscription
+Login-AzureRmAccount
 
-1. Right-click the `ScheduledTask` project and select `Publish`
+# Create a SecureString to be used for our virtual machines
+# We'll use the same password to protect our PFX
+$password = ConvertTo-SecureString "Password1234!" -AsPlainText -Force
+
+# Create the cluster and drop the generated certificate in a folder
+New-AzureRmServiceFabricCluster -ResourceGroupName partycluster1 -Location eastus -VmPassword $password -CertificateOutputFolder C:\temp -CertificatePassword $password -OS WindowsServer2016DatacenterwithContainers
+
+# Import the PFX to your certificate store (replace with your PFX file name)
+Import-PfxCertificate -FilePath C:\temp\myCluster12320170512104014.pfx -Password $password -CertStoreLocation Cert:\CurrentUser\My -Exportable
+```
+[Click here for more info about how to create a Service Fabric Cluster](https://docs.microsoft.com/en-us/azure/service-fabric/service-fabric-get-started-azure-cluster)
+
+### Step 5: Deploying to a Service Fabric cluster
+
+1. If you are connecting to an unsecured cluster, all that's required is the cluster connection endpoint, such as partycluster1.eastus.cloudapp.azure.com:19000. In that case, the connection endpoint in the publish profile would look something like this:
+```xml
+<ClusterConnectionParameters ConnectionEndpoint="partycluster1.eastus.cloudapp.azure.com:19000" />
+```
+
+> If you are connecting to a secured cluster, you will also need to provide the details of the client certificate from the local store to be used for authentication. For more details, see [Configuring secure connections to a Service Fabric cluster](https://docs.microsoft.com/en-us/azure/service-fabric/service-fabric-visualstudio-configure-secure-connections).
+
+2. Right-click the `ScheduledTask` project and select `Publish`
 1. Choose your Service Fabric cluster
 1. Click `Publish`
 
-### Creating a Service Fabric application
 
-1. Right-click your solution and add a new project
-1. Select `Visual C# -> Cloud -> Service Fabric Application`
-1. Choose the `Container` template and specify the image name (ex: `example/scheduledtask:1.0.0`)
-1. Update `ApplicationManifest.xml`
-
-Example:
-```xml
-<ServiceManifestImport>
-  <ServiceManifestRef ServiceManifestName="mvc5appPkg" ServiceManifestVersion="1.0.0" />
-  <ConfigOverrides />
-  <Policies>
-    <ContainerHostPolicies CodePackageRef="Code">
-      <RepositoryCredentials AccountName="TestUser" Password="12345" PasswordEncrypted="false" />
-    </ContainerHostPolicies>
-  </Policies>
-</ServiceManifestImport>
-```
-
-5. Update `ServiceManifest.xml`
-
-```xml
- <CodePackage Name="Code" Version="1.0.0">
-    <EntryPoint>
-      <!-- Follow this link for more information about deploying Windows containers to Service Fabric: https://aka.ms/sfguestcontainers -->
-      <ContainerHost>
-        <ImageName>samples/scheduledtask</ImageName>
-      </ContainerHost>
-    </EntryPoint>
-    ...
-```
 
 * * *
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
